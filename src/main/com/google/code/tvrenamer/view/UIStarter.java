@@ -41,8 +41,10 @@ import org.eclipse.swt.widgets.TableItem;
 import org.eclipse.swt.widgets.Text;
 
 import com.google.code.tvrenamer.controller.TVRenamer;
+import com.google.code.tvrenamer.model.ParsedFileName;
 import com.google.code.tvrenamer.model.Show;
 import com.google.code.tvrenamer.model.util.Constants;
+import com.google.code.tvrenamer.util.MapIterable;
 
 public class UIStarter {
   private static final String pathSeparator = System
@@ -464,14 +466,18 @@ public class UIStarter {
   private void populateTable() {
     // Clear the table for new use
     tblResults.removeAll();
-    for (int i = 0; i < files.size(); i++) {
-      String fileName = files.get(i);
-      String oldFilename = new File(fileName).getName();
-      String newFilename = tv.parseFileName(oldFilename, textShowName.getText(),
-          textFormat.getText());
+
+    Iterable<ParsedFileName> parsedFileNames = tv.parseFiles(new MapIterable<String, String>(files, new MapIterable.Map<String,String>(){
+      public String map(String o) {
+        return new File(o).getName();
+      }}));
+
+    int i = 0;
+    for (ParsedFileName parsed : parsedFileNames) {
       TableItem item = new TableItem(tblResults, SWT.NONE);
-      item.setText(new String[] { i + 1 + "", oldFilename, newFilename });
+      item.setText(new String[] { String.valueOf(i + 1), new File(files.get(i)).getName(), parsed.toString() });
       item.setChecked(true);
+      i++;
     }
   }
 

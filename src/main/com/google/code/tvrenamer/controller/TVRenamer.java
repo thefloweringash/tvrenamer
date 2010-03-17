@@ -2,11 +2,18 @@ package com.google.code.tvrenamer.controller;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import com.google.code.tvrenamer.model.ParsedFileName;
 import com.google.code.tvrenamer.model.Season;
 import com.google.code.tvrenamer.model.Show;
+import com.google.code.tvrenamer.util.MapIterable;
+import com.google.code.tvrenamer.util.RoundRobinIterable;
+import com.google.code.tvrenamer.util.TakeIterable;
 
 public class TVRenamer {
 //  private static Logger logger = Logger.getLogger(TVRenamer.class);
@@ -27,22 +34,115 @@ public class TVRenamer {
     TVRageProvider.getShowListing(show);
   }
 
-  public String parseFileName(String fileName, String showName, String format) {
-    /*
-     * this is horrible, we need to have a new method to get the title before we
-     * try and rename
-     *
-     * need to handle multi-word show titles by:
-     *
-     * 1. checking the title against the directory name
-     *
-     * 2. if it matches, then remove the directory name from the string and
-     * carry on
-     *
-     * 3. else, grab first word of string, presume it's the title and carry on
-     */
 
-    String showTitle = replacePunctuation(showName.toLowerCase());
+  interface Evaluator<T> {
+    public int value(T o);
+  }
+  private static <T> int minimumIndexBy(List<T> xs, Evaluator<T> f) {
+    int i = 0;
+    int lowestIndex = 0;
+    Iterator<T> iter = xs.iterator();
+
+    int lowestScore;
+    T lowest;
+
+    lowest = iter.next();
+    lowestIndex = i++;
+    lowestScore = f.value(lowest);
+
+    while (iter.hasNext()) {
+      T candidate = iter.next();
+      int candidateIndex = i++;
+      int candidateScore = f.value(candidate);
+      if (candidateScore < lowestScore) {
+        lowest = candidate;
+        lowestIndex = candidateIndex;
+        lowestScore = candidateScore;
+      }
+    }
+    return lowestIndex;
+    // lowest is also available if the return type should have multiple values
+  }
+
+  private final Pattern numberPattern = Pattern.compile("([0-9]+)");
+  public List<ParsedFileName> parseFiles(Iterable<String> filenames) {
+    List<List<Integer>> sequences = new ArrayList();
+    List<List<String>> tokenLists = new ArrayList();
+
+    for (String filename : filenames) {
+      Matcher m = numberPattern.matcher(filename);
+
+      int sequenceNo = 0;
+      int tokenStart = 0;
+      List<String> tokenList = new ArrayList<String>();
+      tokenLists.add(tokenList);
+
+      while (m.find()) {
+        List<Integer> sequence;
+        if (sequenceNo >= sequences.size()) {
+          sequence = new ArrayList<Integer>();
+          sequences.add(sequence);
+        }
+        else {
+          sequence = sequences.get(sequenceNo);
+        }
+        sequenceNo++;
+
+        if (m.start() != tokenStart) {
+          tokenList.add(filename.substring(tokenStart, m.start()));
+        }
+        tokenStart = m.end();
+
+        int n = Integer.parseInt(m.group());
+        sequence.add(n);
+      }
+      if (tokenStart < filename.length()) {
+        tokenList.add(filename.substring(tokenStart));
+      }
+    }
+
+    // Dumb heuristic to find episode number
+    List<Integer> episodeSequence;
+    List<Integer> seasonSequence;
+    int episodeIndex = minimumIndexBy(sequences, new Evaluator<List<Integer>>(){
+      public int value(List<Integer> sequence) {
+        int score = 0;
+        Iterator<Integer> sequenceI = sequence.iterator();
+        int last = sequenceI.next();
+        while (sequenceI.hasNext()) {
+          int expected = last + 1;
+          int actual = sequenceI.next();
+          score += expected - actual;
+        }
+        return score;
+      }});
+
+      episodeSequence = sequences.get(episodeIndex);
+      seasonSequence = sequences.get(episodeIndex - 1);
+
+    List<ParsedFileName> results = new ArrayList<ParsedFileName>();
+    int i = 0;
+    for (String filename : filenames) {
+      StringBuilder sb = new StringBuilder();
+      Iterable<String> sequenceParts = new MapIterable<List<Integer>, String>(new TakeIterable(sequences, episodeIndex - 1), new MapIterable.Map<List<Integer>, String>() {
+        public String map(List<Integer> o) {
+          return String.valueOf(o.get(0));
+        }
+      });
+
+      for (String p : new RoundRobinIterable<String>(Arrays.asList(tokenLists.get(i), sequenceParts))) {
+        sb.append(p);
+      }
+      results.add(new ParsedFileName(sb.toString(), seasonSequence.get(i), episodeSequence.get(i)));
+      i++;
+    }
+
+    return results;
+  }
+
+
+  public String formatFileName(String fileName, ParsedFileName parsed, String format) {
+    String showTitle = replacePunctuation(show.getName().toLowerCase());
     String cleanedFileName = replacePunctuation(fileName.toLowerCase());
 
     if (!cleanedFileName.startsWith(showTitle)) {
@@ -51,31 +151,13 @@ public class TVRenamer {
       return fileName;
     }
 
-    // grabs the show's name out of the filename, for shows with numeric titles
-    // String seasonNum = fileName.toLowerCase();
-    String seasonNum = cleanedFileName.replaceFirst(showTitle, "");
 
-    String episodeNum = "";
-
-    // if we keep the episode matching stuff, it will be non-greedy ^_^
-    String regex = "[^\\d]*?(\\d\\d?)[^\\d]*?(\\d\\d).*";
-    String keane = "[\\D0]*(\\d+?)\\D*0*(\\d+)\\D{2}.*$";
-    Matcher matcher = Pattern.compile(regex).matcher(seasonNum);
-    if (matcher.matches()) {
-      seasonNum = matcher.group(1);
-      // remove leading zero
-      if (seasonNum.charAt(0) == '0') {
-        seasonNum = seasonNum.substring(1);
-      }
-      episodeNum = matcher.group(2);
-    }
-
-    Season s = show.getSeason(seasonNum);
+    Season s = show.getSeason(String.valueOf(parsed.season));
     if (s == null) {
 //      logger.error("season not found: " + seasonNum);
       return fileName;
     }
-    String title = s.getTitle(episodeNum);
+    String title = s.getTitle(String.valueOf(parsed.episode));
     if (title == null) {
 //      logger.error("Title not found for episode: " + episodeNum);
       return fileName;
@@ -83,9 +165,9 @@ public class TVRenamer {
     title = sanitiseTitle(title);
     String extension = getExtension(fileName);
 
-    format = format.replace("%S", showName);
-    format = format.replace("%s", seasonNum);
-    format = format.replace("%e", episodeNum);
+    format = format.replace("%S", show.getName());
+    format = format.replace("%s", String.valueOf(parsed.season));
+    format = format.replace("%e", String.valueOf(parsed.episode));
     format = format.replace("%t", title);
 
     return format + "." + extension;

@@ -1,41 +1,40 @@
 package com.google.code.tvrenamer;
 
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertEquals;
 
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
+
+import org.junit.Before;
 import org.junit.Test;
 
 import com.google.code.tvrenamer.controller.TVRenamer;
-import com.google.code.tvrenamer.model.Season;
-import com.google.code.tvrenamer.model.Show;
-import com.google.code.tvrenamer.view.UIStarter;
+import com.google.code.tvrenamer.model.ParsedFileName;
 
 public class TVRenamerTest {
 
+  private TVRenamer tvrenamer;
+
+  @Before
+  public void createTVRenamer() {
+    tvrenamer = new TVRenamer();
+  }
+
+  public void assertParse(List<String> filenames, List<ParsedFileName> expected) {
+    List<ParsedFileName> actual = tvrenamer.parseFiles(filenames);
+    Iterator<ParsedFileName> actualI = actual.iterator();
+    Iterator<ParsedFileName> expectedI = expected.iterator();
+    while (actualI.hasNext() && expectedI.hasNext()) {
+      assertEquals(expectedI.next(), actualI.next());
+    }
+    assertEquals(expectedI.hasNext(), actualI.hasNext());
+  }
+
   @Test
   public void testParseFileName() {
-    // new instance of tvrenamer object
-    TVRenamer tvr = new TVRenamer();
-
-    // dummy show, id is 1 and name is Test
-    String showname = "Warehouse 13";
-    Show show = new Show("7884", showname, "file:///");
-
-    // dummy season, season 1, episode 1 called First Episode
-    Season season = new Season("1");
-    season.setEpisode("01", "Pilot");
-
-    // setup rest of tvrenamer
-    show.setSeason("1", season);
-    tvr.setShow(show);
-
-    String filename = "warehouse.13.s1e01.720p.hdtv.x264-dimension.mkv";
-    String expected = "Warehouse 13 [1x01] Pilot.mkv";
-
-    String retval = tvr.parseFileName(filename, showname,
-        UIStarter.DEFAULT_FORMAT_STRING);
-
-    System.out.println("received: " + retval);
-    assertTrue(retval.equals(expected));
+    assertParse(Arrays.asList("warehouse.13.s1e01.720p.hdtv.x264-dimension.mkv","warehouse.13.s1e02.720p.hdtv.x264-dimension.mkv"),
+        Arrays.asList(new ParsedFileName("warehouse.13.s", 1, 1), new ParsedFileName("warehouse.13.s", 1, 2)));
   }
 
 }
