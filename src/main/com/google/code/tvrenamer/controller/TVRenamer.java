@@ -3,8 +3,10 @@ package com.google.code.tvrenamer.controller;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -64,8 +66,34 @@ public class TVRenamer {
     // lowest is also available if the return type should have multiple values
   }
 
+  public Map<String, List<String>> cluster(Iterable<String> filenames) {
+    Map<String, List<String>> result = new HashMap<String, List<String>>();
+
+    for (String f : filenames) {
+      Matcher m = numberPattern.matcher(f);
+      if (m.find()) {
+        String prefix = f.substring(0, m.start());
+        List<String> bucket;
+        if (!result.containsKey(prefix)) {
+          bucket = new ArrayList<String>();
+          result.put(prefix, bucket);
+        }
+        else {
+          bucket = result.get(prefix);
+        }
+        bucket.add(f);
+      }
+      else {
+        throw new RuntimeException("Cannot find prefix of " + f);
+      }
+
+    }
+
+    return result;
+  }
+
   private final Pattern numberPattern = Pattern.compile("([0-9]+)");
-  public List<ParsedFileName> parseFiles(Iterable<String> filenames) {
+  private List<ParsedFileName> parseClusteredFiles(Iterable<String> filenames) {
     List<List<Integer>> sequences = new ArrayList();
     List<List<String>> tokenLists = new ArrayList();
 
@@ -137,6 +165,24 @@ public class TVRenamer {
       i++;
     }
 
+    return results;
+  }
+
+  public List<ParsedFileName> parseFiles(Iterable<String> filenames) {
+    Map<String, List<String>> buckets = cluster(filenames);
+    Map<String, ParsedFileName> resultMap = new HashMap<String, ParsedFileName>();
+    List<ParsedFileName> results = new ArrayList<ParsedFileName>();
+    for (List<String> bucket : buckets.values()) {
+      Iterator<String> inputI = bucket.iterator();
+      Iterator<ParsedFileName> resultsI = parseClusteredFiles(bucket).iterator();
+
+      while (inputI.hasNext() && resultsI.hasNext()) {
+        resultMap.put(inputI.next(), resultsI.next());
+      }
+    }
+    for (String f : filenames) {
+      results.add(resultMap.get(f));
+    }
     return results;
   }
 

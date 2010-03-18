@@ -33,8 +33,11 @@ public class TVRenamerTest {
 
   @Test
   public void testParseFileName() {
-    assertParse(Arrays.asList("warehouse.13.s1e01.720p.hdtv.x264-dimension.mkv","warehouse.13.s1e02.720p.hdtv.x264-dimension.mkv"),
-        Arrays.asList(new ParsedFileName("warehouse.13.s", 1, 1), new ParsedFileName("warehouse.13.s", 1, 2)));
+    assertParse(Arrays.asList("warehouse.13.s1e01.720p.hdtv.x264-dimension.mkv","warehouse.13.s1e02.720p.hdtv.x264-dimension.mkv",
+    		"Caprica [1x02] Rebirth.avi", "Caprica [1x03] The Reins of a Waterfall.avi", "Caprica [1x04] Gravedancing (fake part 2).avi"),
+        Arrays.asList(new ParsedFileName("warehouse.13.s", 1, 1), new ParsedFileName("warehouse.13.s", 1, 2),
+        new ParsedFileName("Caprica [", 1, 2), new ParsedFileName("Caprica [", 1, 3), new ParsedFileName("Caprica [", 1, 4))
+        );
   }
 
 }
